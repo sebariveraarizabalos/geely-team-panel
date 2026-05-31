@@ -1,820 +1,822 @@
-import { useState, useMemo, useCallback, useEffect, createContext, useContext } from "react";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, CartesianGrid, LineChart, Line } from "recharts";
-import { Users, ListTodo, Clock, AlertTriangle, Plus, X, ChevronDown, Calendar, FolderKanban, LayoutDashboard, Edit3, Trash2, Check, Filter, Zap, Search, TrendingUp, Target, Activity, Menu, Bell, Layers, Star, Tag, Loader2 } from "lucide-react";
-import { createClient } from "@supabase/supabase-js";
+import { useState, useEffect, useMemo } from "react";
 
-// ── SUPABASE ──
-const supabase = createClient(
-  "https://hqpucabkwhhjmvmxhijp.supabase.co",
-  "sb_publishable_VtNZqxLJcktHKLYpX3nh7Q_27z3SrkA"
-);
+// ─── CONSTANTS ───────────────────────────────────────────────────────────────
+const FONT = "'Inter', -apple-system, sans-serif";
+const FONT_DISPLAY = "'Geely', 'Inter', -apple-system, sans-serif";
 
-// DB snake_case ↔ JS camelCase
-const fromDB = (row) => ({
-  id: row.id, titulo: row.titulo, tipoTarea: row.tipo_tarea, miembroId: row.miembro_id,
-  proyecto: row.proyecto, fechaInicio: row.fecha_inicio, fechaFin: row.fecha_fin,
-  estado: row.estado, prioridad: row.prioridad, benchmarkHoras: Number(row.benchmark_horas),
-  horasReales: Number(row.horas_reales),
-});
-const toDB = (t) => ({
-  id: t.id, titulo: t.titulo, tipo_tarea: t.tipoTarea, miembro_id: t.miembroId,
-  proyecto: t.proyecto, fecha_inicio: t.fechaInicio, fecha_fin: t.fechaFin,
-  estado: t.estado, prioridad: t.prioridad, benchmark_horas: t.benchmarkHoras,
-  horas_reales: t.horasReales, updated_at: new Date().toISOString(),
-});
+const ACCOUNTS = ["Todas", "Geely", "Preunic", "Tanner", "Aerosan"];
 
-const FD = "'Geely','Inter',-apple-system,sans-serif";
-const HPD = 8;
-
-// ── BENCHMARK MATRIX (IA-adjusted) ──
-const TASK_TYPES = [
-  { key: "concepto", label: "Concepto creativo / Idea", cat: "Conceptual" },
-  { key: "guion_tv", label: "Guión (spot TV 30s)", cat: "Conceptual" },
-  { key: "guion_radio", label: "Guión (radio/digital)", cat: "Conceptual" },
-  { key: "storyboard", label: "Storyboard / Animatic", cat: "Conceptual" },
-  { key: "kv", label: "Key Visual", cat: "Diseño" },
-  { key: "editorial", label: "Diseño editorial", cat: "Diseño" },
-  { key: "pop", label: "Material POP", cat: "Diseño" },
-  { key: "deck", label: "Presentación / Deck", cat: "Diseño" },
-  { key: "grilla", label: "Grilla RRSS (mes)", cat: "Digital" },
-  { key: "post", label: "Post", cat: "Digital" },
-  { key: "reel", label: "Reel", cat: "Digital" },
-  { key: "carrusel", label: "Carrusel", cat: "Digital" },
-  { key: "adaptaciones", label: "Adaptaciones", cat: "Digital" },
-  { key: "plan_medios", label: "Plan de medios", cat: "Planificación" },
-];
-
-const BM = {
-  concepto: { da: 4, redactor: 6, dc: 6 }, guion_tv: { da: 1, redactor: 10, dc: 2 },
-  guion_radio: { da: 0.5, redactor: 5, dc: 1.5 }, storyboard: { da: 12, redactor: 1, dc: 2 },
-  kv: { da: 2.5, redactor: 1, dc: 0.5 }, editorial: { da: 16, redactor: 8, dc: 2 },
-  pop: { da: 2.5, redactor: 1, dc: 0.5 }, deck: { da: 6, redactor: 5, dc: 2 },
-  grilla: { da: 8, redactor: 5, dc: 1 }, post: { da: 2, redactor: 0.5, dc: 0.5 },
-  reel: { da: 2, redactor: 0.5, dc: 0.5 }, carrusel: { da: 2, redactor: 0.5, dc: 0 },
-  adaptaciones: { da: 3, redactor: 0.5, dc: 0 }, plan_medios: { da: 0, redactor: 4, dc: 2 },
+const ACCOUNT_COLORS = {
+  Geely: "#818cf8",
+  Preunic: "#34d399",
+  Tanner: "#f59e0b",
+  Aerosan: "#f87171",
 };
 
-const MEMBERS = [
-  { id: "m1", name: "Victor Galán", role: "Dir. Arte", roleKey: "da", color: "#818cf8", horasSemanales: 40 },
-  { id: "m2", name: "Victor González", role: "Dir. Arte", roleKey: "da", color: "#f87171", horasSemanales: 40 },
-  { id: "m3", name: "Kevin Rodríguez", role: "Dir. Arte", roleKey: "da", color: "#34d399", horasSemanales: 40 },
-  { id: "m4", name: "Raúl Díaz", role: "Redactor", roleKey: "redactor", color: "#fbbf24", horasSemanales: 40 },
-  { id: "m5", name: "Sebastián Rivera", role: "Dir. Creativo", roleKey: "dc", color: "#a78bfa", horasSemanales: 40 },
+const TEAM = [
+  { id: "sebastian", name: "Sebastián Rivera", role: "Dir. Creativo", accounts: ["Geely", "Preunic", "Tanner", "Aerosan"], basecampNames: ["Sebastian R.", "Sebastián R.", "Sebastian Rivera"] },
+  { id: "victor_g", name: "Victor Galán", role: "Dir. de Arte", accounts: ["Geely"], basecampNames: ["Victor G.", "Victor Galán", "Víctor Galán"] },
+  { id: "victor_gz", name: "Victor González", role: "Dir. de Arte", accounts: ["Geely"], basecampNames: ["Victor Gz.", "Victor González", "Víctor González"] },
+  { id: "kevin", name: "Kevin Rodríguez", role: "Productor / DA", accounts: ["Geely"], basecampNames: ["Kevin R.", "Kevin Rodríguez"] },
+  { id: "raul", name: "Raúl Díaz", role: "Redactor", accounts: ["Geely", "Tanner"], basecampNames: ["Raul D.", "Raúl D.", "Raul Díaz", "Raúl Díaz"] },
+  { id: "lorena", name: "Lorena Escudero", role: "Dir. de Arte", accounts: ["Preunic"], basecampNames: ["Lore E.", "Lorena E.", "Lorena Escudero"] },
+  { id: "rodrigo", name: "Rodrigo Salinas", role: "Redactor", accounts: ["Preunic"], basecampNames: ["Rodrigo S.", "Rodrigo Salinas"] },
+  { id: "billy", name: "Billy Escalona", role: "Editor de Video", accounts: ["Preunic"], basecampNames: ["Billy E.", "Billy Escalona"] },
+  { id: "abner", name: "Abner Piña", role: "Dir. de Arte", accounts: ["Tanner", "Aerosan"], basecampNames: ["Abner P.", "Abner Piña"] },
+  { id: "nicolas", name: "Nicolás Trazar", role: "Redactor", accounts: ["Aerosan"], basecampNames: ["Nicolas T.", "Nicolás T.", "Nicolas Trazar"] },
+  { id: "marcelo", name: "Marcelo Rivas", role: "Redactor", accounts: ["Aerosan"], basecampNames: ["Marcelo R.", "Marcelo Rivas"] },
 ];
 
-const PROJECTS = ["Campaña Geely", "Branding", "Digital Content", "BTL & Eventos", "Pitch Nuevos Clientes", "Interna"];
-const ESTADOS = [
-  { key: "pendiente", label: "Pendiente", color: "#f87171" },
-  { key: "progreso", label: "En Progreso", color: "#fbbf24" },
-  { key: "completada", label: "Completada", color: "#34d399" },
-];
-const PRIOS = [
-  { key: "alta", label: "Alta", color: "#f87171" },
-  { key: "media", label: "Media", color: "#fbbf24" },
-  { key: "baja", label: "Baja", color: "#64748b" },
-];
+const ROLES = ["Dir. Creativo", "Dir. de Arte", "Productor / DA", "Redactor", "Editor de Video"];
 
-const gid = () => "t" + Date.now() + Math.random().toString(36).slice(2, 6);
-const now = new Date();
-const dd = (o) => { const t = new Date(now); t.setDate(t.getDate() + o); return t.toISOString().split("T")[0]; };
+const BENCHMARKS = {
+  "Dir. Creativo":    { weekly: 3, monthly: 12, quality: 95 },
+  "Dir. de Arte":     { weekly: 5, monthly: 20, quality: 90 },
+  "Productor / DA":   { weekly: 6, monthly: 24, quality: 88 },
+  "Redactor":         { weekly: 6, monthly: 24, quality: 88 },
+  "Editor de Video":  { weekly: 4, monthly: 16, quality: 85 },
+};
 
-function getBenchmark(tipo, roleKey, tasks) {
-  const base = BM[tipo]?.[roleKey] ?? 0;
-  if (!base) return 0;
-  const hist = tasks.filter(t => t.tipoTarea === tipo && t.estado === "completada");
-  const rh = hist.filter(t => { const m = MEMBERS.find(x => x.id === t.miembroId); return m?.roleKey === roleKey; });
-  if (rh.length >= 3) { const avg = rh.reduce((s, t) => s + t.horasReales, 0) / rh.length; return Math.round((base * 0.3 + avg * 0.7) * 10) / 10; }
-  return base;
+const VIEWS = ["overview", "kanban", "equipo", "proyectos", "benchmarks"];
+const VIEW_LABELS = { overview: "Overview", kanban: "Kanban", equipo: "Equipo", proyectos: "Proyectos", benchmarks: "Benchmarks" };
+
+const STATUSES = ["Por hacer", "En progreso", "En revisión", "Completado"];
+const PRIORITIES = ["Alta", "Media", "Baja"];
+
+// ─── SUPABASE ────────────────────────────────────────────────────────────────
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "";
+const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
+
+async function sbFetch(path, options = {}) {
+  if (!SUPABASE_URL || !SUPABASE_KEY) return null;
+  const res = await fetch(`${SUPABASE_URL}/rest/v1${path}`, {
+    headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json", Prefer: "return=representation" },
+    ...options,
+  });
+  if (!res.ok) return null;
+  return res.json();
 }
 
-function getEff(real, bm) {
-  if (!bm || !real) return null;
-  const r = real / bm;
-  if (r <= 1) return { color: "#34d399", label: "En tiempo", r };
-  if (r <= 1.2) return { color: "#fbbf24", label: "+20%", r };
-  return { color: "#f87171", label: `+${Math.round((r - 1) * 100)}%`, r };
+// ─── BASECAMP ────────────────────────────────────────────────────────────────
+const BC_CLIENT_ID = import.meta.env.VITE_BASECAMP_CLIENT_ID || "";
+const BC_REDIRECT = import.meta.env.VITE_BASECAMP_REDIRECT_URI || window.location.origin;
+
+function resolveBasecampPerson(bcName) {
+  if (!bcName) return null;
+  const lower = bcName.toLowerCase();
+  for (const member of TEAM) {
+    for (const alias of member.basecampNames) {
+      if (alias.toLowerCase() === lower) return member.id;
+    }
+  }
+  // fuzzy: match by first name
+  for (const member of TEAM) {
+    const firstName = member.name.split(" ")[0].toLowerCase();
+    if (lower.includes(firstName)) return member.id;
+  }
+  return null;
 }
 
-const filt = (tasks, f) => {
-  let r = [...tasks];
-  if (f.miembro) r = r.filter(t => t.miembroId === f.miembro);
-  if (f.estado) r = r.filter(t => t.estado === f.estado);
-  if (f.prioridad) r = r.filter(t => t.prioridad === f.prioridad);
-  if (f.proyecto) r = r.filter(t => t.proyecto === f.proyecto);
-  if (f.search) { const s = f.search.toLowerCase(); r = r.filter(t => t.titulo.toLowerCase().includes(s)); }
-  return r;
+// ─── HELPERS ─────────────────────────────────────────────────────────────────
+const uid = () => Math.random().toString(36).slice(2, 9);
+
+const today = new Date();
+const fmtDate = (d) => d ? new Date(d).toLocaleDateString("es-CL", { day: "2-digit", month: "short" }) : "—";
+
+function getMemberById(id) { return TEAM.find(m => m.id === id); }
+
+// ─── MOCK TASKS (clean start) ─────────────────────────────────────────────────
+const INITIAL_TASKS = [
+  { id: uid(), title: "Campaña lanzamiento eléctrico", assigneeId: "victor_g", account: "Geely", status: "En progreso", priority: "Alta", dueDate: "2026-06-10", completedAt: null },
+  { id: uid(), title: "Copy redes sociales junio", assigneeId: "raul", account: "Geely", status: "Por hacer", priority: "Media", dueDate: "2026-06-05", completedAt: null },
+  { id: uid(), title: "Key visual verano", assigneeId: "lorena", account: "Preunic", status: "En revisión", priority: "Alta", dueDate: "2026-06-08", completedAt: null },
+  { id: uid(), title: "Edición video testimonial", assigneeId: "billy", account: "Preunic", status: "En progreso", priority: "Media", dueDate: "2026-06-12", completedAt: null },
+  { id: uid(), title: "Brief campaña Tanner Q3", assigneeId: "sebastian", account: "Tanner", status: "Por hacer", priority: "Alta", dueDate: "2026-06-15", completedAt: null },
+  { id: uid(), title: "Concepto campaña Aerosan", assigneeId: "abner", account: "Aerosan", status: "Por hacer", priority: "Media", dueDate: "2026-06-20", completedAt: null },
+];
+
+// ─── COLORS & STYLES ─────────────────────────────────────────────────────────
+const C = {
+  bg: "#0a0b14",
+  surface: "#111320",
+  surfaceHover: "#161929",
+  border: "#1e2235",
+  text: "#e2e8f0",
+  textMuted: "#64748b",
+  textDim: "#94a3b8",
+  accent: "#818cf8",
+  accentDim: "#4f5a9e",
 };
 
-// Tasks loaded from Supabase
-
-// ── STYLES ──
-const G = {
-  bg: "#060a13",
-  card: { background: "rgba(255,255,255,0.03)", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 16, transition: "all .25s ease" },
-  inp: { width: "100%", padding: "8px 12px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, fontSize: 13, color: "#e2e8f0", fontFamily: "inherit", outline: "none" },
-  lbl: { display: "block", fontSize: 10, fontWeight: 600, color: "#64748b", marginBottom: 4, letterSpacing: 0.5, textTransform: "uppercase" },
+const statusColors = {
+  "Por hacer":  { bg: "#1e2235", text: "#64748b" },
+  "En progreso": { bg: "#1a2744", text: "#60a5fa" },
+  "En revisión": { bg: "#2a1f44", text: "#a78bfa" },
+  "Completado":  { bg: "#0f2d20", text: "#34d399" },
 };
-const cGlow = (c) => ({ ...G.card, borderColor: c + "20", boxShadow: `0 0 20px ${c}06` });
 
-// ── COMPONENTS ──
-const Badge = ({ children, color }) => (
-  <span style={{ background: color + "15", color, fontSize: 10, fontWeight: 600, padding: "2px 8px", borderRadius: 6, whiteSpace: "nowrap" }}>{children}</span>
-);
+const priorityColors = {
+  Alta:  "#f87171",
+  Media: "#f59e0b",
+  Baja:  "#64748b",
+};
 
-const Sel = ({ value, onChange, options, placeholder, style }) => (
-  <div style={{ position: "relative", ...style }}>
-    <select value={value} onChange={e => onChange(e.target.value)}
-      style={{ ...G.inp, paddingRight: 26, appearance: "none", cursor: "pointer", fontSize: 12 }}>
-      {placeholder && <option value="">{placeholder}</option>}
-      {options.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
-    </select>
-    <ChevronDown size={11} style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", pointerEvents: "none", color: "#475569" }} />
-  </div>
-);
-
-const IBtn = ({ icon: I, onClick, danger, size = 14 }) => (
-  <button onClick={onClick} style={{ background: "transparent", border: "none", cursor: "pointer", padding: 4, borderRadius: 6, color: danger ? "#f87171" : "#475569", display: "flex" }}>
-    <I size={size} />
-  </button>
-);
-
-const Ring = ({ pct, size = 90, stroke = 7, color = "#818cf8", label }) => {
-  const r = (size - stroke) / 2, circ = 2 * Math.PI * r, off = circ * (1 - Math.min(100, pct) / 100);
+// ─── RING COMPONENT ──────────────────────────────────────────────────────────
+function Ring({ pct, color, size = 80, stroke = 7, label }) {
+  const r = (size - stroke) / 2;
+  const circ = 2 * Math.PI * r;
+  const dash = (pct / 100) * circ;
   return (
     <div style={{ position: "relative", width: size, height: size, flexShrink: 0 }}>
       <svg width={size} height={size} style={{ transform: "rotate(-90deg)" }}>
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={stroke} />
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth={stroke}
-          strokeDasharray={circ} strokeDashoffset={off} strokeLinecap="round"
-          style={{ transition: "stroke-dashoffset .8s ease", filter: `drop-shadow(0 0 6px ${color}40)` }} />
+        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={C.border} strokeWidth={stroke}/>
+        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={color} strokeWidth={stroke}
+          strokeDasharray={`${dash} ${circ}`} strokeLinecap="round"/>
       </svg>
       <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <span style={{ fontSize: size > 60 ? 16 : 11, fontWeight: 800, color: "#e2e8f0", fontFamily: FD }}>{label || `${Math.round(pct)}%`}</span>
-      </div>
-    </div>
-  );
-};
-
-const EffDot = ({ real, bm }) => {
-  const e = getEff(real, bm);
-  if (!e) return null;
-  return <div title={`${real}h / ${bm}h`} style={{ width: 7, height: 7, borderRadius: "50%", background: e.color, boxShadow: `0 0 5px ${e.color}40`, flexShrink: 0 }} />;
-};
-
-const Empty = ({ icon: I, title, sub }) => (
-  <div style={{ ...G.card, padding: "48px 24px", textAlign: "center", background: "rgba(129,140,248,0.03)" }}>
-    <I size={36} color="#818cf8" style={{ opacity: 0.4, marginBottom: 12 }} />
-    <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>{title}</div>
-    <div style={{ fontSize: 12, color: "#475569" }}>{sub}</div>
-  </div>
-);
-
-const GTip = ({ active, payload, label }) => {
-  if (!active || !payload?.length) return null;
-  return (
-    <div style={{ ...G.card, background: "rgba(12,18,34,0.95)", padding: "8px 12px" }}>
-      <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 3 }}>{label}</div>
-      {payload.map((p, i) => <div key={i} style={{ fontSize: 10, color: p.color }}>{p.name}: {p.value}</div>)}
-    </div>
-  );
-};
-
-// ── TOAST ──
-const ToastCtx = createContext();
-const useToast = () => useContext(ToastCtx);
-function ToastProvider({ children }) {
-  const [toasts, setToasts] = useState([]);
-  const add = useCallback((msg, type = "info") => {
-    const id = Date.now();
-    setToasts(p => [...p, { id, msg, type }]);
-    setTimeout(() => setToasts(p => p.map(t => t.id === id ? { ...t, out: true } : t)), 2500);
-    setTimeout(() => setToasts(p => p.filter(t => t.id !== id)), 2900);
-  }, []);
-  const tc = { success: "#34d399", error: "#f87171", info: "#a5b4fc" };
-  return (
-    <ToastCtx.Provider value={add}>
-      {children}
-      <div style={{ position: "fixed", top: 16, right: 16, zIndex: 9999, display: "flex", flexDirection: "column", gap: 8, pointerEvents: "none" }}>
-        {toasts.map(t => (
-          <div key={t.id} style={{ pointerEvents: "auto", padding: "10px 16px", borderRadius: 10, background: tc[t.type] + "15", border: `1px solid ${tc[t.type]}25`, color: tc[t.type], fontSize: 12, fontWeight: 500, display: "flex", alignItems: "center", gap: 8, opacity: t.out ? 0 : 1, transform: t.out ? "translateX(40px)" : "none", transition: "all .3s ease" }}>
-            {t.type === "success" ? <Check size={14} /> : <Zap size={14} />}{t.msg}
-          </div>
-        ))}
-      </div>
-    </ToastCtx.Provider>
-  );
-}
-
-// ── MODAL ──
-const Modal = ({ task, members, allTasks, onSave, onClose }) => {
-  const [f, sf] = useState(task || { titulo: "", tipoTarea: "", miembroId: "", proyecto: "", fechaInicio: dd(0), fechaFin: dd(5), estado: "pendiente", prioridad: "media", horasReales: 0 });
-  const s = (k, v) => sf(p => ({ ...p, [k]: v }));
-  const ok = f.titulo && f.miembroId && f.proyecto && f.tipoTarea;
-  const member = members.find(m => m.id === f.miembroId);
-  const bmH = member && f.tipoTarea ? getBenchmark(f.tipoTarea, member.roleKey, allTasks) : 0;
-  const tt = TASK_TYPES.find(t => t.key === f.tipoTarea);
-
-  return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, backdropFilter: "blur(8px)" }} onClick={onClose}>
-      <div onClick={e => e.stopPropagation()} style={{ ...G.card, background: "rgba(12,18,34,0.95)", padding: 28, width: "min(500px,92vw)", maxHeight: "90vh", overflowY: "auto", boxShadow: "0 32px 64px rgba(0,0,0,.6)" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-          <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>{task ? "Editar tarea" : "Nueva tarea"}</h3>
-          <IBtn icon={X} onClick={onClose} />
-        </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <div><label style={G.lbl}>Tipo de tarea</label>
-            <Sel value={f.tipoTarea} onChange={v => { s("tipoTarea", v); if (!f.titulo) { const t = TASK_TYPES.find(x => x.key === v); if (t) s("titulo", t.label); } }} placeholder="Seleccionar..." options={TASK_TYPES.map(t => ({ v: t.key, l: t.label }))} />
-          </div>
-          <div><label style={G.lbl}>Título</label><input value={f.titulo} onChange={e => s("titulo", e.target.value)} style={G.inp} /></div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <div><label style={G.lbl}>Asignar a</label><Sel value={f.miembroId} onChange={v => s("miembroId", v)} placeholder="..." options={members.map(m => ({ v: m.id, l: `${m.name} (${m.role})` }))} /></div>
-            <div><label style={G.lbl}>Proyecto</label><Sel value={f.proyecto} onChange={v => s("proyecto", v)} placeholder="..." options={PROJECTS.map(p => ({ v: p, l: p }))} /></div>
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <div><label style={G.lbl}>Inicio</label><input type="date" value={f.fechaInicio} onChange={e => s("fechaInicio", e.target.value)} style={{ ...G.inp, colorScheme: "dark" }} /></div>
-            <div><label style={G.lbl}>Fin</label><input type="date" value={f.fechaFin} onChange={e => s("fechaFin", e.target.value)} style={{ ...G.inp, colorScheme: "dark" }} /></div>
-          </div>
-
-          {/* Benchmark */}
-          <div style={{ ...G.card, padding: "12px 16px", background: "rgba(129,140,248,0.06)", borderColor: "rgba(129,140,248,0.12)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <div>
-              <div style={{ fontSize: 10, color: "#818cf8", fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}><Star size={11} /> Benchmark IA</div>
-              <div style={{ fontSize: 9, color: "#475569", marginTop: 2 }}>{tt ? tt.label : "Seleccionar tipo"}{member ? ` · ${member.role}` : ""}</div>
-            </div>
-            <div style={{ fontSize: 24, fontWeight: 800, color: bmH ? "#e2e8f0" : "#475569", fontFamily: FD }}>{bmH || "—"}<span style={{ fontSize: 11, color: "#64748b" }}>h</span></div>
-          </div>
-
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <div><label style={G.lbl}>Estado</label><Sel value={f.estado} onChange={v => s("estado", v)} options={ESTADOS.map(e => ({ v: e.key, l: e.label }))} /></div>
-            <div><label style={G.lbl}>Prioridad</label><Sel value={f.prioridad} onChange={v => s("prioridad", v)} options={PRIOS.map(p => ({ v: p.key, l: p.label }))} /></div>
-          </div>
-          <div><label style={G.lbl}>Horas reales</label><input type="number" min={0} step={0.5} value={f.horasReales} onChange={e => s("horasReales", +e.target.value)} style={G.inp} /></div>
-        </div>
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 20 }}>
-          <button onClick={onClose} style={{ padding: "8px 16px", borderRadius: 10, border: "none", fontSize: 13, fontWeight: 600, cursor: "pointer", background: "rgba(255,255,255,0.04)", color: "#64748b", fontFamily: "inherit" }}>Cancelar</button>
-          <button disabled={!ok} onClick={() => onSave({ ...f, id: f.id || gid(), benchmarkHoras: bmH })}
-            style={{ padding: "8px 20px", borderRadius: 10, border: "none", fontSize: 13, fontWeight: 600, cursor: ok ? "pointer" : "not-allowed", background: ok ? "linear-gradient(135deg,#6366f1,#818cf8)" : "rgba(255,255,255,0.04)", color: ok ? "#fff" : "#475569", fontFamily: "inherit" }}>
-            {task ? "Guardar" : "Crear"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// ── OVERVIEW ──
-const Overview = ({ tasks, members }) => {
-  if (!tasks.length) return <Empty icon={LayoutDashboard} title="Sin tareas aún" sub="Creá tu primera tarea con + Nueva tarea" />;
-  const comp = tasks.filter(t => t.estado === "completada").length;
-  const prog = tasks.filter(t => t.estado === "progreso").length;
-  const pend = tasks.filter(t => t.estado === "pendiente").length;
-  const pctComp = tasks.length ? Math.round(comp / tasks.length * 100) : 0;
-  const hBm = tasks.reduce((s, t) => s + (t.benchmarkHoras || 0), 0);
-
-  const memChart = members.map(m => {
-    const mt = tasks.filter(t => t.miembroId === m.id);
-    return { name: m.name.split(" ")[0], Completadas: mt.filter(t => t.estado === "completada").length, Progreso: mt.filter(t => t.estado === "progreso").length, Pendientes: mt.filter(t => t.estado === "pendiente").length };
-  });
-
-  return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
-      {[
-        { icon: ListTodo, l: "Total", v: tasks.length, sub: `${comp} completadas`, c: "#818cf8" },
-        { icon: TrendingUp, l: "Completado", v: `${pctComp}%`, c: "#34d399", ring: true },
-        { icon: Zap, l: "En progreso", v: prog, sub: `${pend} pendientes`, c: "#fbbf24" },
-        { icon: Clock, l: "Benchmark total", v: `${hBm}h`, sub: `${HPD}h/día base`, c: "#a78bfa" },
-      ].map((k, i) => (
-        <div key={i} style={{ ...cGlow(k.c), padding: "18px 20px", display: "flex", alignItems: "center", gap: 14 }}>
-          {k.ring ? <Ring pct={pctComp} size={60} stroke={5} color={k.c} /> :
-            <div style={{ width: 42, height: 42, borderRadius: 12, background: k.c + "12", display: "flex", alignItems: "center", justifyContent: "center" }}><k.icon size={18} color={k.c} /></div>}
-          <div>
-            <div style={{ fontSize: 10, color: "#475569", fontWeight: 500, textTransform: "uppercase", letterSpacing: 0.5 }}>{k.l}</div>
-            <div style={{ fontSize: 24, fontWeight: 800, color: "#e2e8f0", lineHeight: 1.1, fontFamily: FD, marginTop: 2 }}>{k.v}</div>
-            {k.sub && <div style={{ fontSize: 11, color: "#475569", marginTop: 2 }}>{k.sub}</div>}
-          </div>
-        </div>
-      ))}
-
-      {/* Chart */}
-      <div style={{ ...G.card, padding: 20, gridColumn: "span 3" }}>
-        <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 14 }}>Tareas por miembro</div>
-        <ResponsiveContainer width="100%" height={200}>
-          <BarChart data={memChart} barGap={2}>
-            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
-            <XAxis dataKey="name" fontSize={10} tick={{ fill: "#475569" }} axisLine={false} tickLine={false} />
-            <YAxis fontSize={10} tick={{ fill: "#475569" }} axisLine={false} tickLine={false} allowDecimals={false} />
-            <Tooltip content={<GTip />} />
-            <Bar dataKey="Completadas" fill="#34d399" radius={[4, 4, 0, 0]} />
-            <Bar dataKey="Progreso" fill="#fbbf24" radius={[4, 4, 0, 0]} />
-            <Bar dataKey="Pendientes" fill="#f87171" radius={[4, 4, 0, 0]} />
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
-
-      {/* Team Capacity Chart */}
-      <div style={{ ...G.card, padding: 20, gridColumn: "span 4" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-          <div>
-            <div style={{ fontSize: 14, fontWeight: 700 }}>Capacidad del equipo</div>
-            <div style={{ fontSize: 11, color: "#475569", marginTop: 2 }}>Horas benchmark asignadas vs capacidad semanal ({HPD}h/día)</div>
-          </div>
-          {(() => {
-            const totalUsed = members.reduce((s, m) => s + tasks.filter(t => t.miembroId === m.id && t.estado !== "completada").reduce((a, t) => a + (t.benchmarkHoras || 0), 0), 0);
-            const totalCap = members.reduce((s, m) => s + m.horasSemanales, 0);
-            const teamPct = Math.round(totalUsed / totalCap * 100);
-            return (
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <div style={{ textAlign: "right" }}>
-                  <div style={{ fontSize: 10, color: "#475569", textTransform: "uppercase", letterSpacing: 0.5 }}>Uso total</div>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: "#e2e8f0" }}>{totalUsed}h / {totalCap}h</div>
-                </div>
-                <Ring pct={teamPct} size={52} stroke={4} color={teamPct > 90 ? "#f87171" : teamPct > 70 ? "#fbbf24" : "#34d399"} label={`${teamPct}%`} />
-              </div>
-            );
-          })()}
-        </div>
-
-        {/* Horizontal capacity bars */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {members.map(m => {
-            const active = tasks.filter(t => t.miembroId === m.id && t.estado !== "completada");
-            const hUsed = active.reduce((s, t) => s + (t.benchmarkHoras || 0), 0);
-            const pct = Math.round(hUsed / m.horasSemanales * 100);
-            const barColor = pct > 100 ? "#f87171" : pct > 75 ? "#fbbf24" : "#34d399";
-            const taskCount = active.length;
-
-            return (
-              <div key={m.id}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <div style={{ width: 26, height: 26, borderRadius: 8, background: m.color + "15", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 700, color: m.color }}>{m.name.split(" ").map(n => n[0]).join("")}</div>
-                    <div>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: "#e2e8f0" }}>{m.name}</div>
-                      <div style={{ fontSize: 9, color: "#475569" }}>{m.role} · {taskCount} tarea{taskCount !== 1 ? "s" : ""} activa{taskCount !== 1 ? "s" : ""}</div>
-                    </div>
-                  </div>
-                  <div style={{ textAlign: "right" }}>
-                    <span style={{ fontSize: 14, fontWeight: 800, color: barColor, fontFamily: FD }}>{pct}%</span>
-                    <div style={{ fontSize: 9, color: "#475569" }}>{hUsed}h / {m.horasSemanales}h</div>
-                  </div>
-                </div>
-                {/* Bar */}
-                <div style={{ position: "relative", height: 8, background: "rgba(255,255,255,0.04)", borderRadius: 99, overflow: "hidden" }}>
-                  <div style={{ height: "100%", width: `${Math.min(100, pct)}%`, background: `linear-gradient(90deg, ${barColor}90, ${barColor})`, borderRadius: 99, transition: "width 0.6s ease" }} />
-                  {/* Capacity line at 100% */}
-                  {pct > 100 && <div style={{ position: "absolute", right: 0, top: -2, bottom: -2, width: 2, background: "#f87171", borderRadius: 1 }} />}
-                </div>
-                {/* Task breakdown mini-pills */}
-                {active.length > 0 && (
-                  <div style={{ display: "flex", gap: 4, marginTop: 4, flexWrap: "wrap" }}>
-                    {active.map(t => {
-                      const tt = TASK_TYPES.find(x => x.key === t.tipoTarea);
-                      return (
-                        <span key={t.id} style={{ fontSize: 9, padding: "1px 6px", borderRadius: 4, background: "rgba(255,255,255,0.04)", color: "#64748b", whiteSpace: "nowrap" }}>
-                          {t.titulo.length > 20 ? t.titulo.slice(0, 20) + "…" : t.titulo} ({t.benchmarkHoras}h)
-                        </span>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Capacity legend */}
-        <div style={{ display: "flex", gap: 14, marginTop: 14, paddingTop: 12, borderTop: "1px solid rgba(255,255,255,0.06)" }}>
-          {[
-            { color: "#34d399", label: "Disponible (<75%)" },
-            { color: "#fbbf24", label: "Carga alta (75-100%)" },
-            { color: "#f87171", label: "Sobrecarga (>100%)" },
-          ].map((l, i) => (
-            <div key={i} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10, color: "#64748b" }}>
-              <div style={{ width: 8, height: 8, borderRadius: 2, background: l.color }} />{l.label}
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Alerts */}
-      <div style={{ ...G.card, padding: 20, gridColumn: "span 4" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}><Bell size={14} color="#fbbf24" /><span style={{ fontSize: 14, fontWeight: 700 }}>Alertas</span></div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {(() => {
-            const al = [];
-            members.forEach(m => { const h = tasks.filter(t => t.miembroId === m.id && t.estado !== "completada").reduce((s, t) => s + (t.benchmarkHoras || 0), 0); if (h > m.horasSemanales) al.push({ t: "danger", m: `${m.name.split(" ")[0]}: ${h}h / ${m.horasSemanales}h` }); });
-            tasks.forEach(t => { if (t.estado === "completada") return; const diff = (new Date(t.fechaFin) - now) / 864e5; if (diff >= 0 && diff <= 2) al.push({ t: "warn", m: `"${t.titulo}" vence ${diff < 1 ? "hoy" : `en ${Math.ceil(diff)}d`}` }); });
-            if (!al.length) return <div style={{ fontSize: 12, color: "#34d399" }}>Sin alertas activas</div>;
-            return al.map((a, i) => (
-              <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 10px", borderRadius: 8, fontSize: 11, background: a.t === "danger" ? "rgba(248,113,113,0.06)" : "rgba(251,191,36,0.06)", color: a.t === "danger" ? "#f87171" : "#fbbf24", border: `1px solid ${a.t === "danger" ? "rgba(248,113,113,0.1)" : "rgba(251,191,36,0.1)"}` }}>
-                {a.t === "danger" ? <AlertTriangle size={11} /> : <Clock size={11} />}{a.m}
-              </div>
-            ));
-          })()}
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// ── KANBAN ──
-const Kanban = ({ tasks, members, onDrop, onEdit, onDelete }) => {
-  const [over, setOver] = useState("");
-  if (!tasks.length) return <Empty icon={ListTodo} title="Kanban vacío" sub="Las tareas aparecerán aquí" />;
-  return (
-    <div style={{ display: "flex", gap: 12, overflowX: "auto" }}>
-      {ESTADOS.map(st => (
-        <div key={st.key}
-          onDragOver={e => { e.preventDefault(); setOver(st.key); }}
-          onDragLeave={() => setOver("")}
-          onDrop={e => { e.preventDefault(); setOver(""); onDrop(e.dataTransfer.getData("tid"), st.key); }}
-          style={{ ...G.card, flex: 1, minWidth: 260, padding: 14, borderColor: over === st.key ? st.color + "30" : "rgba(255,255,255,0.06)" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, paddingBottom: 10, borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-            <div style={{ width: 8, height: 8, borderRadius: "50%", background: st.color, boxShadow: `0 0 8px ${st.color}40` }} />
-            <span style={{ fontWeight: 700, fontSize: 13 }}>{st.label}</span>
-            <span style={{ marginLeft: "auto", fontSize: 11, fontWeight: 700, color: st.color, background: st.color + "12", padding: "2px 8px", borderRadius: 6 }}>
-              {tasks.filter(t => t.estado === st.key).length}
-            </span>
-          </div>
-          {tasks.filter(t => t.estado === st.key).map(t => {
-            const m = members.find(x => x.id === t.miembroId);
-            const pr = PRIOS.find(p => p.key === t.prioridad);
-            const tt = TASK_TYPES.find(x => x.key === t.tipoTarea);
-            return (
-              <div key={t.id} draggable onDragStart={e => e.dataTransfer.setData("tid", t.id)}
-                style={{ ...G.card, padding: 12, cursor: "grab", borderLeft: `3px solid ${pr.color}`, marginBottom: 8 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 6 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, flex: 1, lineHeight: 1.3 }}>{t.titulo}</div>
-                  <EffDot real={t.horasReales} bm={t.benchmarkHoras} />
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
-                  {m && <span style={{ fontSize: 10, color: m.color, fontWeight: 600, background: m.color + "12", padding: "2px 6px", borderRadius: 4 }}>{m.name.split(" ")[0]}</span>}
-                  <Badge color={pr.color}>{pr.label}</Badge>
-                  {t.benchmarkHoras > 0 && <span style={{ fontSize: 10, color: "#64748b" }}>{t.benchmarkHoras}h bm</span>}
-                  <div style={{ marginLeft: "auto", display: "flex", gap: 2 }}>
-                    <IBtn icon={Edit3} size={12} onClick={() => onEdit(t)} />
-                    <IBtn icon={Trash2} size={12} onClick={() => onDelete(t.id)} danger />
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      ))}
-    </div>
-  );
-};
-
-// ── PERSON VIEW ──
-const PersonView = ({ tasks, members }) => (
-  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 14 }}>
-    {members.map(m => {
-      const mt = tasks.filter(t => t.miembroId === m.id);
-      const active = mt.filter(t => t.estado !== "completada");
-      const comp = mt.filter(t => t.estado === "completada");
-      const hBm = active.reduce((s, t) => s + (t.benchmarkHoras || 0), 0);
-      const pct = mt.length ? Math.round(comp.length / mt.length * 100) : 0;
-      const over = hBm > m.horasSemanales;
-      const effData = comp.filter(t => t.benchmarkHoras > 0 && t.horasReales > 0).map((t, i) => ({ n: `T${i + 1}`, eff: Math.round(t.horasReales / t.benchmarkHoras * 100) }));
-
-      return (
-        <div key={m.id} style={{ ...cGlow(m.color), padding: 18 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
-            <div style={{ width: 40, height: 40, borderRadius: 12, background: m.color + "12", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 14, color: m.color }}>{m.name.split(" ").map(n => n[0]).join("")}</div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 700, fontSize: 14 }}>{m.name}</div>
-              <div style={{ fontSize: 11, color: "#475569" }}>{m.role}</div>
-            </div>
-            <Ring pct={pct} size={44} stroke={4} color={over ? "#f87171" : m.color} label={`${pct}%`} />
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6, marginBottom: 10 }}>
-            {[{ l: "Tareas", v: mt.length, c: "#818cf8" }, { l: "Benchmark", v: `${hBm}h`, c: over ? "#f87171" : "#34d399" }, { l: "Activas", v: active.length, c: "#fbbf24" }].map((s, i) => (
-              <div key={i} style={{ textAlign: "center", padding: "5px 4px", background: "rgba(255,255,255,0.03)", borderRadius: 8 }}>
-                <div style={{ fontSize: 14, fontWeight: 800, color: s.c, fontFamily: FD }}>{s.v}</div>
-                <div style={{ fontSize: 9, color: "#475569", textTransform: "uppercase" }}>{s.l}</div>
-              </div>
-            ))}
-          </div>
-          {effData.length >= 2 && (
-            <div style={{ marginBottom: 8 }}>
-              <div style={{ fontSize: 10, color: "#475569", marginBottom: 4 }}>Tendencia eficiencia</div>
-              <ResponsiveContainer width="100%" height={50}>
-                <LineChart data={effData}><Line type="monotone" dataKey="eff" stroke={m.color} strokeWidth={2} dot={{ r: 2, fill: m.color }} /><YAxis hide domain={[0, "auto"]} /></LineChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-          {mt.map(t => {
-            const st = ESTADOS.find(s => s.key === t.estado);
-            return (
-              <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, padding: "3px 6px", borderRadius: 6, marginBottom: 2, background: "rgba(255,255,255,0.02)" }}>
-                <div style={{ width: 5, height: 5, borderRadius: "50%", background: st.color, flexShrink: 0 }} />
-                <span style={{ flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.titulo}</span>
-                <EffDot real={t.horasReales} bm={t.benchmarkHoras} />
-                <span style={{ color: "#475569", fontSize: 10 }}>{t.benchmarkHoras}h</span>
-              </div>
-            );
-          })}
-        </div>
-      );
-    })}
-  </div>
-);
-
-// ── BENCHMARKS VIEW ──
-const BenchView = ({ tasks }) => {
-  const cats = [...new Set(TASK_TYPES.map(t => t.cat))];
-  return (
-    <div style={{ ...G.card, padding: 20 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
-        <Star size={16} color="#818cf8" /><span style={{ fontSize: 16, fontWeight: 700 }}>Matriz de benchmarks</span><Badge color="#34d399">IA-adjusted</Badge>
-      </div>
-      <div style={{ overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-          <thead>
-            <tr>{["Tipo de tarea", "Dir. arte", "Redactor", "Dir. creativo", "Prom. real"].map((h, i) => (
-              <th key={i} style={{ textAlign: i ? "center" : "left", padding: "8px 10px", fontWeight: 500, fontSize: 11, color: "#64748b", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>{h}</th>
-            ))}</tr>
-          </thead>
-          <tbody>
-            {cats.map(cat => [
-              <tr key={"c" + cat}><td colSpan={5} style={{ padding: "8px 10px", fontSize: 10, fontWeight: 600, color: "#475569", textTransform: "uppercase", background: "rgba(255,255,255,0.02)", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>{cat}</td></tr>,
-              ...TASK_TYPES.filter(t => t.cat === cat).map(tt => {
-                const ct = tasks.filter(t => t.tipoTarea === tt.key && t.estado === "completada" && t.horasReales > 0);
-                const avg = ct.length ? Math.round(ct.reduce((s, t) => s + t.horasReales, 0) / ct.length * 10) / 10 : null;
-                return (
-                  <tr key={tt.key} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
-                    <td style={{ padding: "6px 10px", fontWeight: 500 }}>{tt.label}</td>
-                    {["da", "redactor", "dc"].map(r => { const v = BM[tt.key]?.[r]; return <td key={r} style={{ textAlign: "center", padding: "6px", color: v ? "#e2e8f0" : "#475569" }}>{v ? `${v}h` : "—"}</td>; })}
-                    <td style={{ textAlign: "center", padding: "6px", color: avg ? "#818cf8" : "#475569", fontWeight: avg ? 600 : 400 }}>{avg ? `${avg}h` : "—"}</td>
-                  </tr>
-                );
-              })
-            ])}
-          </tbody>
-        </table>
-      </div>
-      <div style={{ marginTop: 14, padding: 12, background: "rgba(129,140,248,0.04)", borderRadius: 10, fontSize: 11, color: "#64748b", lineHeight: 1.6 }}>
-        <span style={{ color: "#818cf8", fontWeight: 600 }}>Fórmula:</span> benchmark = (base × 0.3) + (promedio_real × 0.7) cuando ≥3 tareas completadas.
-        <span style={{ display: "flex", gap: 12, marginTop: 4 }}>
-          <span style={{ display: "flex", alignItems: "center", gap: 3 }}><span style={{ width: 6, height: 6, borderRadius: "50%", background: "#34d399" }} />≤100%</span>
-          <span style={{ display: "flex", alignItems: "center", gap: 3 }}><span style={{ width: 6, height: 6, borderRadius: "50%", background: "#fbbf24" }} />100–120%</span>
-          <span style={{ display: "flex", alignItems: "center", gap: 3 }}><span style={{ width: 6, height: 6, borderRadius: "50%", background: "#f87171" }} />&gt;120%</span>
+        <span style={{ fontSize: size > 70 ? 17 : 13, fontWeight: 800, color: C.text, fontFamily: FONT_DISPLAY }}>
+          {label || `${pct}%`}
         </span>
       </div>
     </div>
   );
-};
+}
 
-// ── SIDEBAR ──
-const SB = ({ view, setView, collapsed, toggle, bcStatus, onBcSync, syncing }) => {
-  const nav = [
-    { key: "resumen", label: "Overview", icon: LayoutDashboard },
-    { key: "kanban", label: "Kanban", icon: ListTodo },
-    { key: "personas", label: "Equipo", icon: Users },
-    { key: "proyectos", label: "Proyectos", icon: FolderKanban },
-    { key: "benchmarks", label: "Benchmarks", icon: Target },
-  ];
-  const w = collapsed ? 56 : 210;
+// ─── AVATAR ──────────────────────────────────────────────────────────────────
+function Avatar({ member, size = 32 }) {
+  if (!member) return <div style={{ width: size, height: size, borderRadius: "50%", background: C.border }}/>;
+  const initials = member.name.split(" ").map(w => w[0]).slice(0, 2).join("");
+  const hue = member.id.split("").reduce((a, c) => a + c.charCodeAt(0), 0) % 360;
   return (
-    <div style={{ width: w, minWidth: w, height: "100vh", position: "fixed", left: 0, top: 0, zIndex: 100, background: "rgba(8,12,24,0.9)", backdropFilter: "blur(20px)", borderRight: "1px solid rgba(255,255,255,0.06)", display: "flex", flexDirection: "column", padding: "14px 8px", transition: "width .25s ease", overflow: "hidden" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 6px", marginBottom: 24, cursor: "pointer" }} onClick={toggle}>
-        <div style={{ width: 34, height: 34, borderRadius: 10, background: "linear-gradient(135deg,#6366f1,#818cf8)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><Layers size={16} color="#fff" /></div>
-        {!collapsed && <div><div style={{ fontSize: 13, fontWeight: 800, color: "#e2e8f0", fontFamily: FD }}>Geely</div><div style={{ fontSize: 9, color: "#818cf8", fontWeight: 600 }}>Team Working Panel</div></div>}
-      </div>
-      {nav.map(n => {
-        const a = view === n.key;
-        return (
-          <button key={n.key} onClick={() => setView(n.key)} style={{ display: "flex", alignItems: "center", gap: 10, padding: collapsed ? "9px" : "8px 12px", borderRadius: 10, border: "none", cursor: "pointer", fontFamily: "inherit", fontSize: 12, fontWeight: a ? 600 : 400, background: a ? "rgba(129,140,248,0.12)" : "transparent", color: a ? "#818cf8" : "#64748b", marginBottom: 2, justifyContent: collapsed ? "center" : "flex-start", transition: "all .2s" }}>
-            <n.icon size={16} />{!collapsed && n.label}
-          </button>
-        );
-      })}
-      <div style={{ flex: 1 }} />
-      {!collapsed && (
-        <div style={{ ...G.card, padding: 12, textAlign: "center", background: bcStatus?.connected ? "rgba(52,211,153,0.06)" : "rgba(129,140,248,0.05)", borderColor: bcStatus?.connected ? "rgba(52,211,153,0.12)" : "rgba(129,140,248,0.1)" }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 5, marginBottom: 4 }}>
-            <div style={{ width: 6, height: 6, borderRadius: "50%", background: bcStatus?.connected ? "#34d399" : "#f87171" }} />
-            <div style={{ fontSize: 10, color: bcStatus?.connected ? "#34d399" : "#818cf8", fontWeight: 600 }}>Basecamp</div>
-          </div>
-          {bcStatus?.connected ? (
-            <>
-              <div style={{ fontSize: 9, color: "#34d399", marginBottom: 6 }}>Conectado{bcStatus.identity ? ` · ${bcStatus.identity}` : ""}</div>
-              <button onClick={onBcSync} disabled={syncing}
-                style={{ padding: "5px 14px", borderRadius: 8, border: "1px solid rgba(52,211,153,0.2)", background: syncing ? "rgba(52,211,153,0.1)" : "transparent", color: "#34d399", fontSize: 11, fontWeight: 600, cursor: syncing ? "wait" : "pointer", fontFamily: "inherit", width: "100%" }}>
-                {syncing ? "Sincronizando..." : "Sync tareas"}
-              </button>
-            </>
-          ) : (
-            <>
-              <div style={{ fontSize: 9, color: "#475569", marginBottom: 6 }}>No conectado</div>
-              <a href="/api/auth/login"
-                style={{ display: "block", padding: "5px 14px", borderRadius: 8, border: "1px solid rgba(129,140,248,0.2)", background: "transparent", color: "#818cf8", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", textDecoration: "none" }}>
-                Conectar
-              </a>
-            </>
-          )}
+    <div style={{ width: size, height: size, borderRadius: "50%", background: `hsl(${hue}, 55%, 30%)`,
+      display: "flex", alignItems: "center", justifyContent: "center",
+      fontSize: size * 0.35, fontWeight: 700, color: `hsl(${hue}, 80%, 75%)`, flexShrink: 0 }}>
+      {initials}
+    </div>
+  );
+}
+
+// ─── ACCOUNT BADGE ───────────────────────────────────────────────────────────
+function AccountBadge({ account, small }) {
+  const color = ACCOUNT_COLORS[account] || C.textMuted;
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: small ? 10 : 11,
+      fontWeight: 600, color, background: `${color}18`, border: `1px solid ${color}30`,
+      borderRadius: 4, padding: small ? "1px 5px" : "2px 7px" }}>
+      <span style={{ width: 5, height: 5, borderRadius: "50%", background: color, display: "inline-block" }}/>
+      {account}
+    </span>
+  );
+}
+
+// ─── MAIN APP ─────────────────────────────────────────────────────────────────
+export default function App() {
+  const [view, setView] = useState("overview");
+  const [tasks, setTasks] = useState(INITIAL_TASKS);
+  const [activeAccount, setActiveAccount] = useState("Todas");
+  const [showCompleted, setShowCompleted] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [bcToken, setBcToken] = useState(localStorage.getItem("bc_token") || "");
+  const [modal, setModal] = useState(null); // { type: "task", data? }
+
+  // Load from Supabase on mount
+  useEffect(() => {
+    sbFetch("/tasks?select=*&order=created_at.desc").then(data => {
+      if (data && data.length > 0) setTasks(data);
+    });
+  }, []);
+
+  // Basecamp OAuth callback
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get("code");
+    if (code && !bcToken) {
+      // In a real setup, exchange code for token via backend
+      localStorage.setItem("bc_token", code);
+      setBcToken(code);
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, []);
+
+  // Filtered tasks
+  const filteredTasks = useMemo(() => {
+    let t = tasks;
+    if (activeAccount !== "Todas") t = t.filter(tk => tk.account === activeAccount);
+    if (!showCompleted) t = t.filter(tk => tk.status !== "Completado");
+    return t;
+  }, [tasks, activeAccount, showCompleted]);
+
+  // ── CRUD ──
+  async function addTask(data) {
+    const task = { id: uid(), completedAt: null, ...data };
+    const updated = [task, ...tasks];
+    setTasks(updated);
+    await sbFetch("/tasks", { method: "POST", body: JSON.stringify(task) });
+  }
+
+  async function updateTask(id, patch) {
+    if (patch.status === "Completado" && !patch.completedAt) patch.completedAt = new Date().toISOString();
+    const updated = tasks.map(t => t.id === id ? { ...t, ...patch } : t);
+    setTasks(updated);
+    await sbFetch(`/tasks?id=eq.${id}`, { method: "PATCH", body: JSON.stringify(patch) });
+  }
+
+  async function deleteTask(id) {
+    setTasks(tasks.filter(t => t.id !== id));
+    await sbFetch(`/tasks?id=eq.${id}`, { method: "DELETE" });
+  }
+
+  // ── STATS ──
+  const stats = useMemo(() => {
+    const total = filteredTasks.length;
+    const done = filteredTasks.filter(t => t.status === "Completado").length;
+    const inProgress = filteredTasks.filter(t => t.status === "En progreso").length;
+    const review = filteredTasks.filter(t => t.status === "En revisión").length;
+    const overdue = filteredTasks.filter(t => t.dueDate && new Date(t.dueDate) < today && t.status !== "Completado").length;
+    return { total, done, inProgress, review, overdue, pct: total ? Math.round((done / total) * 100) : 0 };
+  }, [filteredTasks]);
+
+  // ─── RENDER ──────────────────────────────────────────────────────────────
+  return (
+    <div style={{ display: "flex", height: "100vh", background: C.bg, color: C.text, fontFamily: FONT, overflow: "hidden" }}>
+      <Sidebar view={view} setView={setView} sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen}
+        activeAccount={activeAccount} setActiveAccount={setActiveAccount}
+        showCompleted={showCompleted} setShowCompleted={setShowCompleted}
+        stats={stats} tasks={filteredTasks}/>
+      <main style={{ flex: 1, overflow: "auto", display: "flex", flexDirection: "column" }}>
+        <TopBar view={view} activeAccount={activeAccount} setActiveAccount={setActiveAccount}
+          showCompleted={showCompleted} setShowCompleted={setShowCompleted}
+          onAddTask={() => setModal({ type: "task" })} bcToken={bcToken} setBcToken={setBcToken}/>
+        <div style={{ flex: 1, padding: "24px 28px" }}>
+          {view === "overview"   && <OverviewView tasks={filteredTasks} stats={stats} setModal={setModal} updateTask={updateTask}/>}
+          {view === "kanban"     && <KanbanView tasks={filteredTasks} updateTask={updateTask} deleteTask={deleteTask} setModal={setModal}/>}
+          {view === "equipo"     && <EquipoView tasks={filteredTasks} activeAccount={activeAccount}/>}
+          {view === "proyectos"  && <ProyectosView tasks={filteredTasks} updateTask={updateTask} deleteTask={deleteTask}/>}
+          {view === "benchmarks" && <BenchmarksView tasks={filteredTasks}/>}
         </div>
+      </main>
+      {modal?.type === "task" && (
+        <TaskModal task={modal.data} onSave={data => { modal.data ? updateTask(modal.data.id, data) : addTask(data); setModal(null); }}
+          onClose={() => setModal(null)} onDelete={modal.data ? () => { deleteTask(modal.data.id); setModal(null); } : null}
+          activeAccount={activeAccount}/>
       )}
     </div>
   );
-};
+}
 
-// ── MAIN ──
-function Dashboard() {
-  const toast = useToast();
-  const [tasks, setTasks] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [view, setView] = useState("resumen");
-  const [modal, setModal] = useState(null);
-  const [filters, setFilters] = useState({ miembro: "", estado: "", prioridad: "", proyecto: "", search: "" });
-  const [collapsed, setCollapsed] = useState(false);
-  const [bcStatus, setBcStatus] = useState(null);
-  const [syncing, setSyncing] = useState(false);
-  const sf = (k, v) => setFilters(p => ({ ...p, [k]: v }));
-  const filtered = useMemo(() => filt(tasks, filters), [tasks, filters]);
-
-  // Check Basecamp connection status
-  useEffect(() => {
-    const checkBc = async () => {
-      try {
-        const res = await fetch("/api/basecamp/status");
-        const data = await res.json();
-        setBcStatus(data);
-      } catch { setBcStatus({ connected: false }); }
-    };
-    checkBc();
-    // Handle ?basecamp=connected redirect
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("basecamp") === "connected") {
-      toast("Basecamp conectado", "success");
-      window.history.replaceState({}, "", "/");
-      checkBc();
-    }
-    if (params.get("error")) {
-      toast("Error conectando Basecamp: " + params.get("error"), "error");
-      window.history.replaceState({}, "", "/");
-    }
-  }, []);
-
-  // Sync Basecamp todos
-  const syncBasecamp = async () => {
-    if (!bcStatus?.connected) return;
-    setSyncing(true);
-    try {
-      // Get projects first
-      const projRes = await fetch("/api/basecamp/projects");
-      const projects = await projRes.json();
-      if (!projects.length) { toast("No se encontraron proyectos", "error"); setSyncing(false); return; }
-      // Sync all projects
-      let totalSynced = 0;
-      for (const proj of projects) {
-        const syncRes = await fetch(`/api/basecamp/sync?projectId=${proj.id}`);
-        const syncData = await syncRes.json();
-        totalSynced += syncData.synced || 0;
-      }
-      toast(`${totalSynced} tareas sincronizadas desde Basecamp`, "success");
-      // Reload tasks from Supabase
-      const { data } = await supabase.from("tasks").select("*").order("created_at", { ascending: false });
-      if (data) setTasks(data.map(fromDB));
-    } catch (err) {
-      console.error(err);
-      toast("Error sincronizando", "error");
-    }
-    setSyncing(false);
-  };
-
-  // Load tasks from Supabase + real-time subscription
-  useEffect(() => {
-    const loadTasks = async () => {
-      const { data, error } = await supabase.from("tasks").select("*").order("created_at", { ascending: false });
-      if (error) { console.error(error); toast("Error cargando tareas", "error"); }
-      else setTasks(data.map(fromDB));
-      setLoading(false);
-    };
-    loadTasks();
-
-    const channel = supabase.channel("tasks-realtime")
-      .on("postgres_changes", { event: "*", schema: "public", table: "tasks" }, (payload) => {
-        if (payload.eventType === "INSERT") {
-          setTasks(p => { if (p.find(t => t.id === payload.new.id)) return p; return [fromDB(payload.new), ...p]; });
-        } else if (payload.eventType === "UPDATE") {
-          setTasks(p => p.map(t => t.id === payload.new.id ? fromDB(payload.new) : t));
-        } else if (payload.eventType === "DELETE") {
-          setTasks(p => p.filter(t => t.id !== payload.old.id));
-        }
-      })
-      .subscribe();
-
-    return () => { supabase.removeChannel(channel); };
-  }, []);
-
-  const save = async (t) => {
-    const isNew = !tasks.find(x => x.id === t.id);
-    // Optimistic update
-    setTasks(p => { const i = p.findIndex(x => x.id === t.id); if (i >= 0) { const c = [...p]; c[i] = t; return c; } return [t, ...p]; });
-    setModal(null);
-    // Sync to Supabase
-    const { error } = await supabase.from("tasks").upsert(toDB(t));
-    if (error) { console.error(error); toast("Error guardando", "error"); }
-    else toast(isNew ? `"${t.titulo}" creada` : `Actualizada`, "success");
-  };
-
-  const del = async (id) => {
-    setTasks(p => p.filter(x => x.id !== id));
-    const { error } = await supabase.from("tasks").delete().eq("id", id);
-    if (error) { console.error(error); toast("Error eliminando", "error"); }
-    else toast("Eliminada", "error");
-  };
-
-  const drop = async (tid, est) => {
-    const st = ESTADOS.find(e => e.key === est);
-    setTasks(p => p.map(x => x.id === tid ? { ...x, estado: est } : x));
-    const { error } = await supabase.from("tasks").update({ estado: est, updated_at: new Date().toISOString() }).eq("id", tid);
-    if (error) console.error(error);
-    else toast(`→ ${st?.label}`, "info");
-  };
-
-  const af = Object.values(filters).filter(Boolean).length;
-  const ml = collapsed ? 56 : 210;
-
-  if (loading) return (
-    <div style={{ background: G.bg, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 16 }}>
-      <Loader2 size={32} color="#818cf8" style={{ animation: "spin 1s linear infinite" }} />
-      <div style={{ color: "#64748b", fontSize: 14 }}>Conectando con Supabase...</div>
-      <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+// ─── SIDEBAR ─────────────────────────────────────────────────────────────────
+function Sidebar({ view, setView, sidebarOpen, setSidebarOpen, activeAccount, setActiveAccount, showCompleted, setShowCompleted, stats, tasks }) {
+  if (!sidebarOpen) return (
+    <div style={{ width: 48, background: C.surface, borderRight: `1px solid ${C.border}`, display: "flex", flexDirection: "column", alignItems: "center", padding: "16px 0", gap: 8 }}>
+      <button onClick={() => setSidebarOpen(true)} style={{ background: "none", border: "none", color: C.textMuted, cursor: "pointer", padding: 8 }}>☰</button>
+      {VIEWS.map(v => (
+        <button key={v} onClick={() => setView(v)} title={VIEW_LABELS[v]}
+          style={{ background: view === v ? C.accentDim : "none", border: "none", color: view === v ? "#fff" : C.textMuted,
+            cursor: "pointer", width: 32, height: 32, borderRadius: 8, fontSize: 14 }}>
+          {VIEW_ICONS[v]}
+        </button>
+      ))}
     </div>
   );
 
   return (
-    <div style={{ background: G.bg, minHeight: "100vh", fontFamily: "'Inter',-apple-system,sans-serif", color: "#e2e8f0" }}>
-      {/* BG orbs */}
-      <div style={{ position: "fixed", inset: 0, pointerEvents: "none", overflow: "hidden", zIndex: 0 }}>
-        <div style={{ position: "absolute", width: 500, height: 500, borderRadius: "50%", background: "radial-gradient(circle,rgba(99,102,241,0.06) 0%,transparent 70%)", top: "-10%", left: "-5%" }} />
-        <div style={{ position: "absolute", width: 400, height: 400, borderRadius: "50%", background: "radial-gradient(circle,rgba(6,182,212,0.05) 0%,transparent 70%)", top: "40%", right: "-8%" }} />
-      </div>
-
-      <SB view={view} setView={setView} collapsed={collapsed} toggle={() => setCollapsed(!collapsed)} bcStatus={bcStatus} onBcSync={syncBasecamp} syncing={syncing} />
-
-      <div style={{ marginLeft: ml, transition: "margin .25s ease", position: "relative", zIndex: 1 }}>
-        {/* Top bar */}
-        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 20px", borderBottom: "1px solid rgba(255,255,255,0.06)", background: "rgba(6,10,19,0.8)", backdropFilter: "blur(12px)", position: "sticky", top: 0, zIndex: 50 }}>
-          <button onClick={() => setCollapsed(!collapsed)} style={{ background: "transparent", border: "none", cursor: "pointer", color: "#64748b", display: "flex", padding: 4 }}><Menu size={16} /></button>
-          <div style={{ position: "relative", flex: 1, maxWidth: 280 }}>
-            <Search size={13} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "#475569" }} />
-            <input value={filters.search} onChange={e => sf("search", e.target.value)} placeholder="Buscar..." style={{ ...G.inp, paddingLeft: 30, fontSize: 12, background: "rgba(255,255,255,0.03)" }} />
+    <div style={{ width: 220, background: C.surface, borderRight: `1px solid ${C.border}`, display: "flex", flexDirection: "column", flexShrink: 0 }}>
+      {/* Logo */}
+      <div style={{ padding: "20px 16px 16px", borderBottom: `1px solid ${C.border}` }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 800, color: C.text, fontFamily: FONT_DISPLAY, letterSpacing: -0.3 }}>Team Panel</div>
+            <div style={{ fontSize: 10, color: C.accent, fontWeight: 600, marginTop: 1 }}>4 cuentas · 11 personas</div>
           </div>
-          <Sel value={filters.miembro} onChange={v => sf("miembro", v)} placeholder="Miembro" options={MEMBERS.map(m => ({ v: m.id, l: m.name }))} style={{ minWidth: 130 }} />
-          <Sel value={filters.estado} onChange={v => sf("estado", v)} placeholder="Estado" options={ESTADOS.map(e => ({ v: e.key, l: e.label }))} style={{ minWidth: 110 }} />
-          {af > 0 && <button onClick={() => setFilters({ miembro: "", estado: "", prioridad: "", proyecto: "", search: "" })} style={{ padding: "4px 10px", borderRadius: 8, border: "1px solid rgba(248,113,113,0.15)", background: "rgba(248,113,113,0.06)", color: "#f87171", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Limpiar</button>}
-          <button onClick={() => setModal("new")} style={{ marginLeft: "auto", background: "linear-gradient(135deg,#6366f1,#818cf8)", color: "#fff", border: "none", borderRadius: 10, padding: "8px 16px", fontWeight: 700, fontSize: 12, cursor: "pointer", display: "flex", alignItems: "center", gap: 5, fontFamily: "inherit" }}>
-            <Plus size={14} /> Nueva tarea
-          </button>
-        </div>
-
-        <div style={{ padding: "20px 20px 40px" }}>
-          {view === "resumen" && <Overview tasks={af > 0 ? filtered : tasks} members={MEMBERS} />}
-          {view === "kanban" && <Kanban tasks={filtered} members={MEMBERS} onDrop={drop} onEdit={t => setModal(t)} onDelete={del} />}
-          {view === "personas" && <PersonView tasks={tasks} members={MEMBERS} />}
-          {view === "proyectos" && (() => {
-            const data = PROJECTS.map(p => { const pt = tasks.filter(t => t.proyecto === p); const c = pt.filter(t => t.estado === "completada").length; return { name: p, total: pt.length, pct: pt.length ? Math.round(c / pt.length * 100) : 0, hBm: pt.reduce((s, t) => s + (t.benchmarkHoras || 0), 0) }; }).filter(p => p.total > 0);
-            if (!data.length) return <Empty icon={FolderKanban} title="Sin proyectos" sub="Aparecerán al crear tareas" />;
-            return <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>{data.map(p => (
-              <div key={p.name} style={{ ...G.card, padding: 18 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
-                  <FolderKanban size={16} color="#818cf8" />
-                  <div style={{ flex: 1 }}><div style={{ fontWeight: 700 }}>{p.name}</div><div style={{ fontSize: 11, color: "#475569" }}>{p.total} tareas · {p.hBm}h benchmark</div></div>
-                  <Ring pct={p.pct} size={48} stroke={4} color="#818cf8" />
-                </div>
-                <div style={{ height: 4, background: "rgba(255,255,255,0.04)", borderRadius: 99, overflow: "hidden" }}>
-                  <div style={{ height: "100%", width: `${p.pct}%`, background: "linear-gradient(90deg,#6366f1,#818cf8)", borderRadius: 99 }} />
-                </div>
-              </div>
-            ))}</div>;
-          })()}
-          {view === "benchmarks" && <BenchView tasks={tasks} />}
+          <button onClick={() => setSidebarOpen(false)} style={{ background: "none", border: "none", color: C.textMuted, cursor: "pointer", fontSize: 16 }}>‹</button>
         </div>
       </div>
 
-      {modal && <Modal task={modal === "new" ? null : modal} members={MEMBERS} allTasks={tasks} onSave={save} onClose={() => setModal(null)} />}
+      {/* Nav */}
+      <nav style={{ padding: "12px 8px", flex: 1, overflow: "auto" }}>
+        <div style={{ fontSize: 10, fontWeight: 700, color: C.textMuted, padding: "0 8px", marginBottom: 6, letterSpacing: 1 }}>VISTAS</div>
+        {VIEWS.map(v => (
+          <button key={v} onClick={() => setView(v)}
+            style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "8px 10px",
+              background: view === v ? `${C.accent}18` : "none", border: "none",
+              color: view === v ? C.accent : C.textDim, cursor: "pointer", borderRadius: 8,
+              fontSize: 13, fontWeight: view === v ? 600 : 400, textAlign: "left", marginBottom: 2 }}>
+            <span style={{ fontSize: 15 }}>{VIEW_ICONS[v]}</span>
+            {VIEW_LABELS[v]}
+            {v === "overview" && stats.overdue > 0 && (
+              <span style={{ marginLeft: "auto", background: "#f87171", color: "#fff", borderRadius: 10, fontSize: 10, fontWeight: 700, padding: "1px 6px" }}>{stats.overdue}</span>
+            )}
+          </button>
+        ))}
+
+        {/* Accounts */}
+        <div style={{ fontSize: 10, fontWeight: 700, color: C.textMuted, padding: "16px 8px 6px", letterSpacing: 1 }}>CUENTAS</div>
+        {ACCOUNTS.map(acc => {
+          const count = acc === "Todas" ? tasks.length : tasks.filter(t => t.account === acc).length;
+          const color = ACCOUNT_COLORS[acc] || C.accent;
+          const active = activeAccount === acc;
+          return (
+            <button key={acc} onClick={() => setActiveAccount(acc)}
+              style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "7px 10px",
+                background: active ? `${color}18` : "none", border: "none",
+                color: active ? color : C.textDim, cursor: "pointer", borderRadius: 8,
+                fontSize: 12, fontWeight: active ? 700 : 400, textAlign: "left", marginBottom: 1 }}>
+              <span style={{ width: 8, height: 8, borderRadius: "50%", background: active ? color : C.border, flexShrink: 0 }}/>
+              {acc}
+              <span style={{ marginLeft: "auto", fontSize: 11, color: active ? color : C.textMuted }}>{count}</span>
+            </button>
+          );
+        })}
+
+        {/* Toggle completadas */}
+        <div style={{ padding: "16px 8px 0" }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 12, color: C.textDim }}>
+            <div onClick={() => setShowCompleted(!showCompleted)}
+              style={{ width: 32, height: 18, borderRadius: 9, background: showCompleted ? C.accent : C.border,
+                position: "relative", transition: "background 0.2s", flexShrink: 0 }}>
+              <div style={{ position: "absolute", top: 2, left: showCompleted ? 16 : 2, width: 14, height: 14,
+                borderRadius: "50%", background: "#fff", transition: "left 0.2s" }}/>
+            </div>
+            Mostrar completadas
+          </label>
+        </div>
+      </nav>
+
+      {/* Bottom stats */}
+      <div style={{ padding: "12px 16px", borderTop: `1px solid ${C.border}` }}>
+        <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 6 }}>Progreso general</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <Ring pct={stats.pct} color={C.accent} size={44} stroke={5}/>
+          <div>
+            <div style={{ fontSize: 18, fontWeight: 800, fontFamily: FONT_DISPLAY }}>{stats.done}<span style={{ fontSize: 12, color: C.textMuted }}>/{stats.total}</span></div>
+            <div style={{ fontSize: 11, color: C.textMuted }}>completadas</div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
 
-const GEELY_CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
-@font-face {
-  font-family: 'Geely';
-  src: url('/fonts/GeelySans-Bold.woff2') format('woff2'), url('/fonts/GeelySans-Bold.woff') format('woff');
-  font-weight: 400 900; font-style: normal; font-display: swap;
-}
-body { font-family: 'Inter', -apple-system, sans-serif; background: #060a13; color: #e2e8f0; }
-h1,h2,h3,h4 { font-family: 'Geely', 'Inter', -apple-system, sans-serif; }
-::-webkit-scrollbar { width: 5px; height: 5px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 4px; }
-select option { background: #0c1222; color: #e2e8f0; }
-`;
+const VIEW_ICONS = { overview: "◉", kanban: "⊞", equipo: "◎", proyectos: "▦", benchmarks: "▣" };
 
-export default function App() {
-  return <ToastProvider><style>{GEELY_CSS}</style><Dashboard /></ToastProvider>;
+// ─── TOP BAR ─────────────────────────────────────────────────────────────────
+function TopBar({ view, activeAccount, setActiveAccount, showCompleted, setShowCompleted, onAddTask, bcToken, setBcToken }) {
+  return (
+    <div style={{ padding: "16px 28px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", gap: 12, background: C.surface, flexShrink: 0 }}>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontSize: 18, fontWeight: 800, fontFamily: FONT_DISPLAY, letterSpacing: -0.5 }}>
+          {VIEW_LABELS[view]}
+          {activeAccount !== "Todas" && (
+            <span style={{ marginLeft: 10, fontSize: 13, fontWeight: 600, color: ACCOUNT_COLORS[activeAccount] }}>· {activeAccount}</span>
+          )}
+        </div>
+      </div>
+
+      {/* Basecamp connect */}
+      {!bcToken && BC_CLIENT_ID && (
+        <a href={`https://launchpad.37signals.com/authorization/new?type=web_server&client_id=${BC_CLIENT_ID}&redirect_uri=${encodeURIComponent(BC_REDIRECT)}`}
+          style={{ fontSize: 12, color: C.textMuted, textDecoration: "none", border: `1px solid ${C.border}`,
+            borderRadius: 8, padding: "6px 12px", display: "flex", alignItems: "center", gap: 6 }}>
+          <span>⛺</span> Conectar Basecamp
+        </a>
+      )}
+      {bcToken && (
+        <div style={{ fontSize: 12, color: "#34d399", border: `1px solid #34d39930`, borderRadius: 8, padding: "6px 12px" }}>
+          ✓ Basecamp
+        </div>
+      )}
+
+      <button onClick={onAddTask}
+        style={{ background: C.accent, border: "none", color: "#fff", padding: "8px 16px",
+          borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
+        + Nueva tarea
+      </button>
+    </div>
+  );
+}
+
+// ─── OVERVIEW VIEW ────────────────────────────────────────────────────────────
+function OverviewView({ tasks, stats, setModal, updateTask }) {
+  const urgent = tasks.filter(t => t.dueDate && new Date(t.dueDate) < today && t.status !== "Completado");
+  const inProgress = tasks.filter(t => t.status === "En progreso").slice(0, 6);
+
+  const byAccount = ACCOUNTS.slice(1).map(acc => {
+    const at = tasks.filter(t => t.account === acc);
+    const done = at.filter(t => t.status === "Completado").length;
+    return { acc, total: at.length, done, pct: at.length ? Math.round((done / at.length) * 100) : 0 };
+  });
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+      {/* KPIs */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16 }}>
+        {[
+          { label: "Total tareas", value: stats.total, color: C.accent },
+          { label: "En progreso", value: stats.inProgress, color: "#60a5fa" },
+          { label: "En revisión", value: stats.review, color: "#a78bfa" },
+          { label: "Vencidas", value: stats.overdue, color: "#f87171" },
+        ].map(k => (
+          <div key={k.label} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: "16px 20px" }}>
+            <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 6 }}>{k.label}</div>
+            <div style={{ fontSize: 28, fontWeight: 800, fontFamily: FONT_DISPLAY, color: k.color }}>{k.value}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+        {/* By account */}
+        <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: 20 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 16 }}>Progreso por cuenta</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            {byAccount.map(({ acc, total, done, pct }) => (
+              <div key={acc} style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <Ring pct={pct} color={ACCOUNT_COLORS[acc]} size={44} stroke={5}/>
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: ACCOUNT_COLORS[acc] }}>{acc}</span>
+                    <span style={{ fontSize: 12, color: C.textMuted }}>{done}/{total}</span>
+                  </div>
+                  <div style={{ height: 4, background: C.border, borderRadius: 2 }}>
+                    <div style={{ height: 4, width: `${pct}%`, background: ACCOUNT_COLORS[acc], borderRadius: 2 }}/>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Urgent */}
+        <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: 20 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
+            Urgentes / Vencidas
+            {urgent.length > 0 && <span style={{ background: "#f87171", color: "#fff", borderRadius: 10, fontSize: 11, padding: "1px 7px" }}>{urgent.length}</span>}
+          </div>
+          {urgent.length === 0
+            ? <div style={{ fontSize: 13, color: C.textMuted }}>Todo al día ✓</div>
+            : urgent.map(t => (
+              <TaskRow key={t.id} task={t} onClick={() => setModal({ type: "task", data: t })} onStatusChange={s => updateTask(t.id, { status: s })}/>
+            ))}
+        </div>
+      </div>
+
+      {/* In progress */}
+      <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: 20 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 14 }}>En progreso</div>
+        {inProgress.length === 0
+          ? <div style={{ fontSize: 13, color: C.textMuted }}>Sin tareas en progreso</div>
+          : inProgress.map(t => (
+            <TaskRow key={t.id} task={t} onClick={() => setModal({ type: "task", data: t })} onStatusChange={s => updateTask(t.id, { status: s })}/>
+          ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── TASK ROW ─────────────────────────────────────────────────────────────────
+function TaskRow({ task, onClick, onStatusChange }) {
+  const member = getMemberById(task.assigneeId);
+  const overdue = task.dueDate && new Date(task.dueDate) < today && task.status !== "Completado";
+  return (
+    <div onClick={onClick} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px",
+      borderRadius: 8, cursor: "pointer", marginBottom: 4, transition: "background 0.15s" }}
+      onMouseEnter={e => e.currentTarget.style.background = C.surfaceHover}
+      onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+      <select value={task.status} onClick={e => e.stopPropagation()} onChange={e => onStatusChange(e.target.value)}
+        style={{ fontSize: 11, fontWeight: 600, color: statusColors[task.status].text,
+          background: statusColors[task.status].bg, border: "none", borderRadius: 6, padding: "3px 6px", cursor: "pointer" }}>
+        {STATUSES.map(s => <option key={s}>{s}</option>)}
+      </select>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 13, color: task.status === "Completado" ? C.textMuted : C.text,
+          textDecoration: task.status === "Completado" ? "line-through" : "none",
+          whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+          {task.title}
+        </div>
+      </div>
+      <AccountBadge account={task.account} small/>
+      <Avatar member={member} size={24}/>
+      <span style={{ fontSize: 11, color: overdue ? "#f87171" : C.textMuted, flexShrink: 0 }}>{fmtDate(task.dueDate)}</span>
+    </div>
+  );
+}
+
+// ─── KANBAN VIEW ──────────────────────────────────────────────────────────────
+function KanbanView({ tasks, updateTask, deleteTask, setModal }) {
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, height: "100%", alignItems: "start" }}>
+      {STATUSES.map(status => {
+        const col = tasks.filter(t => t.status === status);
+        return (
+          <div key={status} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden" }}>
+            <div style={{ padding: "12px 16px", borderBottom: `1px solid ${C.border}`,
+              display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ width: 8, height: 8, borderRadius: "50%", background: statusColors[status].text }}/>
+                <span style={{ fontSize: 12, fontWeight: 700, color: statusColors[status].text }}>{status}</span>
+              </div>
+              <span style={{ fontSize: 12, color: C.textMuted, background: C.border, borderRadius: 10, padding: "1px 7px" }}>{col.length}</span>
+            </div>
+            <div style={{ padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+              {col.map(t => <KanbanCard key={t.id} task={t} updateTask={updateTask} onClick={() => setModal({ type: "task", data: t })}/>)}
+              {col.length === 0 && <div style={{ fontSize: 12, color: C.textMuted, padding: "8px 6px" }}>Sin tareas</div>}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function KanbanCard({ task, updateTask, onClick }) {
+  const member = getMemberById(task.assigneeId);
+  const overdue = task.dueDate && new Date(task.dueDate) < today && task.status !== "Completado";
+  return (
+    <div onClick={onClick}
+      style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: 12, cursor: "pointer" }}
+      onMouseEnter={e => e.currentTarget.style.borderColor = C.accent}
+      onMouseLeave={e => e.currentTarget.style.borderColor = C.border}>
+      <div style={{ fontSize: 13, marginBottom: 8, lineHeight: 1.4 }}>{task.title}</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+        <AccountBadge account={task.account} small/>
+        <span style={{ fontSize: 10, fontWeight: 600, color: priorityColors[task.priority] }}>{task.priority}</span>
+        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6 }}>
+          {task.dueDate && <span style={{ fontSize: 10, color: overdue ? "#f87171" : C.textMuted }}>{fmtDate(task.dueDate)}</span>}
+          <Avatar member={member} size={22}/>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── EQUIPO VIEW ──────────────────────────────────────────────────────────────
+function EquipoView({ tasks, activeAccount }) {
+  const members = activeAccount === "Todas" ? TEAM : TEAM.filter(m => m.accounts.includes(activeAccount));
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}>
+        {members.map(member => {
+          const memberTasks = tasks.filter(t => t.assigneeId === member.id);
+          const done = memberTasks.filter(t => t.status === "Completado").length;
+          const inProg = memberTasks.filter(t => t.status === "En progreso").length;
+          const pct = memberTasks.length ? Math.round((done / memberTasks.length) * 100) : 0;
+          return (
+            <div key={member.id} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+                <Avatar member={member} size={42}/>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 700 }}>{member.name}</div>
+                  <div style={{ fontSize: 12, color: C.textMuted }}>{member.role}</div>
+                </div>
+                <div style={{ marginLeft: "auto" }}>
+                  <Ring pct={pct} color={C.accent} size={44} stroke={5}/>
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+                {member.accounts.map(acc => <AccountBadge key={acc} account={acc} small/>)}
+              </div>
+              <div style={{ display: "flex", gap: 12 }}>
+                {[
+                  { label: "Total", val: memberTasks.length },
+                  { label: "En progreso", val: inProg },
+                  { label: "Completadas", val: done },
+                ].map(s => (
+                  <div key={s.label} style={{ flex: 1, background: C.bg, borderRadius: 8, padding: "8px 10px" }}>
+                    <div style={{ fontSize: 18, fontWeight: 800, fontFamily: FONT_DISPLAY }}>{s.val}</div>
+                    <div style={{ fontSize: 10, color: C.textMuted }}>{s.label}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── PROYECTOS VIEW ───────────────────────────────────────────────────────────
+function ProyectosView({ tasks, updateTask, deleteTask }) {
+  const [sortBy, setSortBy] = useState("account");
+  const grouped = useMemo(() => {
+    if (sortBy === "account") {
+      return ACCOUNTS.slice(1).map(acc => ({ key: acc, label: acc, items: tasks.filter(t => t.account === acc) })).filter(g => g.items.length > 0);
+    }
+    if (sortBy === "assignee") {
+      return TEAM.map(m => ({ key: m.id, label: m.name, items: tasks.filter(t => t.assigneeId === m.id) })).filter(g => g.items.length > 0);
+    }
+    return STATUSES.map(s => ({ key: s, label: s, items: tasks.filter(t => t.status === s) })).filter(g => g.items.length > 0);
+  }, [tasks, sortBy]);
+
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+        {[["account", "Por cuenta"], ["status", "Por estado"], ["assignee", "Por persona"]].map(([k, l]) => (
+          <button key={k} onClick={() => setSortBy(k)}
+            style={{ padding: "6px 14px", borderRadius: 8, border: "none", fontSize: 12, fontWeight: 600, cursor: "pointer",
+              background: sortBy === k ? C.accent : C.surface, color: sortBy === k ? "#fff" : C.textDim }}>
+            {l}
+          </button>
+        ))}
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+        {grouped.map(group => (
+          <div key={group.key} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden" }}>
+            <div style={{ padding: "12px 16px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", gap: 10 }}>
+              {sortBy === "account" && <AccountBadge account={group.label}/>}
+              {sortBy !== "account" && <span style={{ fontSize: 13, fontWeight: 700 }}>{group.label}</span>}
+              <span style={{ fontSize: 12, color: C.textMuted }}>{group.items.length} tareas</span>
+            </div>
+            <div style={{ padding: "8px 12px" }}>
+              {group.items.map(t => (
+                <TaskRow key={t.id} task={t} onClick={() => {}} onStatusChange={s => updateTask(t.id, { status: s })}/>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── BENCHMARKS VIEW ──────────────────────────────────────────────────────────
+function BenchmarksView({ tasks }) {
+  const now = new Date();
+  const startOfWeek = new Date(now);
+  startOfWeek.setDate(now.getDate() - now.getDay());
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden" }}>
+        <div style={{ padding: "14px 20px", borderBottom: `1px solid ${C.border}` }}>
+          <div style={{ fontSize: 14, fontWeight: 700 }}>Performance del equipo vs. benchmarks</div>
+        </div>
+        <div style={{ overflow: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+            <thead>
+              <tr style={{ background: C.bg }}>
+                {["Persona", "Rol", "Cuenta(s)", "Semanal", "Bench", "Mensual", "Bench", "Calidad", "Estado"].map(h => (
+                  <th key={h} style={{ padding: "10px 16px", textAlign: "left", fontSize: 11, fontWeight: 700, color: C.textMuted, borderBottom: `1px solid ${C.border}` }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {TEAM.map(member => {
+                const bench = BENCHMARKS[member.role] || BENCHMARKS["Redactor"];
+                const memberTasks = tasks.filter(t => t.assigneeId === member.id);
+                const weekly = memberTasks.filter(t => t.status === "Completado" && t.completedAt && new Date(t.completedAt) >= startOfWeek).length;
+                const monthly = memberTasks.filter(t => t.status === "Completado").length;
+                const weekRatio = bench.weekly ? (weekly / bench.weekly) : 0;
+                const monthRatio = bench.monthly ? (monthly / bench.monthly) : 0;
+                const avgRatio = (weekRatio + monthRatio) / 2;
+                const statusColor = avgRatio >= 1 ? "#34d399" : avgRatio >= 0.7 ? "#f59e0b" : "#f87171";
+                const statusLabel = avgRatio >= 1 ? "On track" : avgRatio >= 0.7 ? "Warning" : "Behind";
+                return (
+                  <tr key={member.id} style={{ borderBottom: `1px solid ${C.border}` }}
+                    onMouseEnter={e => e.currentTarget.style.background = C.surfaceHover}
+                    onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                    <td style={{ padding: "12px 16px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <Avatar member={member} size={28}/>
+                        <span style={{ fontWeight: 600 }}>{member.name}</span>
+                      </div>
+                    </td>
+                    <td style={{ padding: "12px 16px", color: C.textMuted, fontSize: 12 }}>{member.role}</td>
+                    <td style={{ padding: "12px 16px" }}>
+                      <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                        {member.accounts.map(a => <AccountBadge key={a} account={a} small/>)}
+                      </div>
+                    </td>
+                    <td style={{ padding: "12px 16px" }}>
+                      <span style={{ fontWeight: 700, color: weekRatio >= 1 ? "#34d399" : weekRatio >= 0.7 ? "#f59e0b" : "#f87171" }}>{weekly}</span>
+                    </td>
+                    <td style={{ padding: "12px 16px", color: C.textMuted }}>{bench.weekly}</td>
+                    <td style={{ padding: "12px 16px" }}>
+                      <span style={{ fontWeight: 700, color: monthRatio >= 1 ? "#34d399" : monthRatio >= 0.7 ? "#f59e0b" : "#f87171" }}>{monthly}</span>
+                    </td>
+                    <td style={{ padding: "12px 16px", color: C.textMuted }}>{bench.monthly}</td>
+                    <td style={{ padding: "12px 16px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <div style={{ flex: 1, height: 4, background: C.border, borderRadius: 2, minWidth: 60 }}>
+                          <div style={{ height: 4, width: `${Math.min(100, avgRatio * 100)}%`, background: statusColor, borderRadius: 2 }}/>
+                        </div>
+                        <span style={{ fontSize: 11, color: C.textMuted }}>{bench.quality}%</span>
+                      </div>
+                    </td>
+                    <td style={{ padding: "12px 16px" }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: statusColor, background: `${statusColor}18`,
+                        border: `1px solid ${statusColor}30`, borderRadius: 6, padding: "2px 8px" }}>{statusLabel}</span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── TASK MODAL ───────────────────────────────────────────────────────────────
+function TaskModal({ task, onSave, onClose, onDelete, activeAccount }) {
+  const [form, setForm] = useState({
+    title: task?.title || "",
+    assigneeId: task?.assigneeId || TEAM[0].id,
+    account: task?.account || (activeAccount !== "Todas" ? activeAccount : "Geely"),
+    status: task?.status || "Por hacer",
+    priority: task?.priority || "Media",
+    dueDate: task?.dueDate || "",
+  });
+
+  const accountMembers = TEAM.filter(m => m.accounts.includes(form.account));
+
+  function set(k, v) {
+    setForm(f => {
+      const next = { ...f, [k]: v };
+      if (k === "account") {
+        const valid = TEAM.filter(m => m.accounts.includes(v));
+        if (!valid.find(m => m.id === next.assigneeId)) next.assigneeId = valid[0]?.id || TEAM[0].id;
+      }
+      return next;
+    });
+  }
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }}
+      onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16, padding: 28, width: 480, maxWidth: "95vw" }}>
+        <div style={{ fontSize: 16, fontWeight: 800, fontFamily: FONT_DISPLAY, marginBottom: 20 }}>
+          {task ? "Editar tarea" : "Nueva tarea"}
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div>
+            <label style={{ fontSize: 11, color: C.textMuted, fontWeight: 600, display: "block", marginBottom: 6 }}>TÍTULO</label>
+            <input value={form.title} onChange={e => set("title", e.target.value)}
+              placeholder="Descripción de la tarea..."
+              style={{ width: "100%", background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8,
+                padding: "10px 12px", color: C.text, fontSize: 14, outline: "none", boxSizing: "border-box" }}/>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div>
+              <label style={{ fontSize: 11, color: C.textMuted, fontWeight: 600, display: "block", marginBottom: 6 }}>CUENTA</label>
+              <select value={form.account} onChange={e => set("account", e.target.value)}
+                style={{ width: "100%", background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 13 }}>
+                {ACCOUNTS.slice(1).map(a => <option key={a}>{a}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={{ fontSize: 11, color: C.textMuted, fontWeight: 600, display: "block", marginBottom: 6 }}>ASIGNADO A</label>
+              <select value={form.assigneeId} onChange={e => set("assigneeId", e.target.value)}
+                style={{ width: "100%", background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 13 }}>
+                {accountMembers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+            <div>
+              <label style={{ fontSize: 11, color: C.textMuted, fontWeight: 600, display: "block", marginBottom: 6 }}>ESTADO</label>
+              <select value={form.status} onChange={e => set("status", e.target.value)}
+                style={{ width: "100%", background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 13 }}>
+                {STATUSES.map(s => <option key={s}>{s}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={{ fontSize: 11, color: C.textMuted, fontWeight: 600, display: "block", marginBottom: 6 }}>PRIORIDAD</label>
+              <select value={form.priority} onChange={e => set("priority", e.target.value)}
+                style={{ width: "100%", background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 13 }}>
+                {PRIORITIES.map(p => <option key={p}>{p}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={{ fontSize: 11, color: C.textMuted, fontWeight: 600, display: "block", marginBottom: 6 }}>FECHA LÍMITE</label>
+              <input type="date" value={form.dueDate} onChange={e => set("dueDate", e.target.value)}
+                style={{ width: "100%", background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 13, boxSizing: "border-box" }}/>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", gap: 10, marginTop: 24 }}>
+          {onDelete && (
+            <button onClick={onDelete} style={{ background: "#f8717118", border: `1px solid #f8717130`, color: "#f87171",
+              padding: "9px 16px", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+              Eliminar
+            </button>
+          )}
+          <div style={{ flex: 1 }}/>
+          <button onClick={onClose} style={{ background: "none", border: `1px solid ${C.border}`, color: C.textDim,
+            padding: "9px 18px", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+            Cancelar
+          </button>
+          <button onClick={() => form.title && onSave(form)}
+            style={{ background: form.title ? C.accent : C.border, border: "none", color: "#fff",
+              padding: "9px 20px", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: form.title ? "pointer" : "default" }}>
+            {task ? "Guardar" : "Crear tarea"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
