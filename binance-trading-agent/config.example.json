@@ -1,0 +1,12 @@
+{
+  "symbols": ["BTCUSDT", "ETHUSDT", "SOLUSDT"],
+  "interval": "1h",
+  "risk_per_trade_pct": 0.5,
+  "max_leverage": 3,
+  "max_open_positions": 2,
+  "max_daily_loss_pct": 3.0,
+  "max_trades_per_day": 6,
+  "atr_stop_mult": 2.0,
+  "reward_risk": 2.0,
+  "paper_equity": 1000.0
+}

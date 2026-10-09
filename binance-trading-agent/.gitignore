@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.env
+journal.jsonl
+state.json
+state.json.tmp
+KILL
