@@ -8,7 +8,7 @@ Agente en Python (largos y cortos) que lee velas de Binance, aplica una estrateg
 
 | Qué | Estado |
 |---|---|
-| Indicadores, estrategia, riesgo, backtester | 81 tests automáticos en verde |
+| Indicadores, estrategia, riesgo, backtester | 84 tests automáticos en verde |
 | Firma HMAC | Verificada contra el vector oficial de la documentación de Binance |
 | Flujo completo (cliente, agente, órdenes) | Probado sobre HTTP contra un exchange simulado local que valida firmas y orden de requests |
 | **Contra Binance real o testnet** | **No probado.** El entorno donde se construyó no podía llegar a Binance. Ejecuta `check --mode testnet` antes de nada |
@@ -41,7 +41,8 @@ python -m agent run --mode dry-run
 
 # 3. Testnet: claves de https://testnet.binancefuture.com
 export BINANCE_TESTNET_API_KEY=... BINANCE_TESTNET_API_SECRET=...
-python -m agent check --mode testnet
+python -m agent check --mode testnet        # solo lectura: conexión, filtros, saldo, modo de cuenta
+python -m agent smoke-test --symbol BTCUSDT # abre una posición mínima, verifica stop y objetivo, la cierra
 python -m agent run --mode testnet
 
 # 4. Dinero real (solo tras semanas de testnet)
@@ -55,6 +56,28 @@ Otros comandos: `run --once` (un solo ciclo), `reset-halt` (limpia una detenció
 Todas las decisiones se escriben en `journal.jsonl` (señales, rechazos, entradas, errores, detenciones).
 
 **Claves de API en Binance:** habilita solo Futuros, **desactiva retiros** y restringe por IP. Usa una subcuenta con el capital que estés dispuesto a perder.
+
+## Cómo probarlo con Binance (en este orden)
+
+Necesitas Python 3.10+ en tu propio equipo o servidor: el contenedor donde se construyó no llega a Binance.
+
+1. `python -m unittest discover -s tests -t .` debe terminar en `OK`.
+2. `python -m agent backtest --symbol BTCUSDT` con datos reales, sin claves. Compara el resultado con comprar y mantener.
+3. `python -m agent run --mode dry-run` durante varios días. Si quieres ver actividad pronto, pon `"interval": "5m"` en tu config; sirve para probar la mecánica, no para evaluar la estrategia.
+4. Claves de testnet (en https://testnet.binancefuture.com, pestaña de API Key bajo el gráfico) y `check --mode testnet`. Debe imprimir `[ok]` en todo y ningún `[PROBLEM]`.
+5. `python -m agent smoke-test`: es la prueba clave. Compra el mínimo permitido, comprueba que el stop y el objetivo quedan registrados en Binance, y lo cancela y cierra todo. Termina en `PASSED` o en `FAILED: do not go live`. Solo funciona en testnet y se niega a ejecutarse en live.
+6. `python -m agent run --mode testnet` durante al menos 2 o 3 semanas. Revisa `journal.jsonl` cada día.
+7. Solo entonces considera live con capital que puedas perder por completo, empezando con `risk_per_trade_pct` en 0,25.
+
+| Error de Binance | Causa probable |
+|---|---|
+| `-2015` Invalid API-key | Claves de otro entorno (testnet vs live) o restricción de IP |
+| `-1021` Timestamp | Reloj del equipo desincronizado |
+| `-4120` Order type not supported | La orden condicional debe ir por `/fapi/v1/algoOrder`; revisa la documentación vigente |
+| `-2019` Margin is insufficient | Saldo de testnet insuficiente |
+| `-4046` No need to change margin type | Inofensivo; el agente lo ignora |
+
+Si `testnet.binancefuture.com` cambia de dirección, edita `TESTNET_URL` en `agent/binance_client.py`.
 
 ## Estrategia
 

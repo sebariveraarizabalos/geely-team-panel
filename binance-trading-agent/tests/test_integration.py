@@ -13,6 +13,7 @@ from agent.binance_client import BinanceFutures, sign
 from agent.config import Config
 from agent.risk import RiskManager, fmt_decimal, position_size
 from agent.runner import Agent, ExchangeExecutor, Journal, PaperExecutor, preflight
+from agent.smoke import run_smoke_test
 from agent.strategy import compute_features, generate_signal, signal_at
 from tests.helpers import HOUR, make_candles, trending
 
@@ -76,15 +77,29 @@ class Handler(BaseHTTPRequestHandler):
             return self._reply(200, [{"asset": "USDT", "balance": "1000", "availableBalance": "1000",
                                       "crossUnPnl": "0"}])
         if path == "/fapi/v2/positionRisk":
-            return self._reply(200, [])
+            held = [{"symbol": "BTCUSDT", "positionAmt": str(srv.position), "entryPrice": "100"}]
+            return self._reply(200, held if srv.position else [])
         if path == "/fapi/v1/openAlgoOrders":
-            return self._reply(200, [])
+            return self._reply(200, list(srv.algos))
         if path == "/fapi/v1/positionSide/dual":
             return self._reply(200, {"dualSidePosition": srv.hedge_mode})
         if path == "/fapi/v1/order":
+            if params.get("reduceOnly") == "true":
+                srv.position = 0.0
+            else:
+                sign_ = 1 if params["side"] == "BUY" else -1
+                srv.position += sign_ * float(params["quantity"])
             return self._reply(200, {"avgPrice": str(srv.candles[-1].close), "status": "FILLED"})
-        if path == "/fapi/v1/algoOrder":
-            return self._reply(200, {"algoId": len(srv.recorded)})
+        if path == "/fapi/v1/algoOrder" and self.command == "POST":
+            if params.get("type") in srv.reject_types:
+                return self._reply(400, {"code": -4120, "msg": "Order type not supported for this endpoint. "
+                                                              "Please use the Algo Order API endpoints instead."})
+            algo_id = len(srv.recorded)
+            srv.algos.append({"algoId": algo_id, "symbol": params["symbol"], "type": params["type"]})
+            return self._reply(200, {"algoId": algo_id})
+        if path == "/fapi/v1/algoOrder" and self.command == "DELETE":
+            srv.algos[:] = [a for a in srv.algos if str(a["algoId"]) != params["algoId"]]
+            return self._reply(200, {"algoId": params["algoId"]})
         return self._reply(200, {})
 
     do_GET = do_POST = do_DELETE = _handle
@@ -103,6 +118,7 @@ class LocalExchangeTests(unittest.TestCase):
                                  NOW_MS + 3_000_000)
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         self.server.recorded, self.server.bad_requests, self.server.hedge_mode = [], 0, False
+        self.server.position, self.server.algos, self.server.reject_types = 0.0, [], set()
         self.server.candles = self.candles + [in_progress]
         thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         thread.start()
@@ -156,6 +172,32 @@ class LocalExchangeTests(unittest.TestCase):
         self.assertEqual(self.writes(), [])
         self.assertIn("BTCUSDT", executor.account.positions)
         self.assertEqual(self.server.bad_requests, 0)
+
+    def test_smoke_test_passes_and_leaves_the_account_clean(self):
+        lines = []
+        self.assertTrue(run_smoke_test(self.client(testnet=True), "BTCUSDT", self.cfg, out=lines.append))
+        self.assertEqual(self.server.position, 0.0)
+        self.assertEqual(self.server.algos, [])
+        self.assertEqual(self.server.bad_requests, 0)
+        kinds = [(m, p) for m, p, _ in self.writes()]
+        self.assertEqual(kinds.count(("POST", "/fapi/v1/algoOrder")), 2)
+        self.assertEqual(kinds.count(("DELETE", "/fapi/v1/algoOrder")), 2)
+        self.assertIn("PASSED", lines[-1])
+
+    def test_smoke_test_fails_loudly_and_flattens_when_stop_is_rejected(self):
+        self.server.reject_types = {"STOP_MARKET"}
+        lines = []
+        self.assertFalse(run_smoke_test(self.client(testnet=True), "BTCUSDT", self.cfg, out=lines.append))
+        self.assertEqual(self.server.position, 0.0)
+        self.assertEqual(self.server.algos, [])
+        self.assertTrue(any("[FAIL]" in line for line in lines))
+        self.assertIn("FAILED", lines[-1])
+
+    def test_smoke_test_refuses_live_and_dry_run_clients(self):
+        for kw in ({"testnet": False}, {"testnet": True, "dry_run": True}):
+            with self.assertRaises(RuntimeError):
+                run_smoke_test(self.client(**kw), "BTCUSDT", self.cfg, out=lambda _: None)
+        self.assertEqual(self.server.recorded, [])
 
     def test_preflight_passes_on_one_way_mode(self):
         self.assertEqual(preflight(self.client(testnet=True), "testnet"), [])

@@ -8,6 +8,7 @@ from .binance_client import BinanceAPIError, BinanceConnectionError, BinanceFutu
 from .config import ConfigError, load_config
 from .risk import RiskManager
 from .runner import Agent, ExchangeExecutor, Journal, PaperExecutor, preflight
+from .smoke import run_smoke_test
 
 LIVE_CONFIRMATION = "I_UNDERSTAND_THE_RISK"
 
@@ -79,6 +80,16 @@ def cmd_run(args, cfg):
     return 0
 
 
+def cmd_smoke_test(args, cfg):
+    client = build_client("testnet")
+    problems = preflight(client, "testnet")
+    if problems:
+        for p in problems:
+            print(f"[PROBLEM] {p}")
+        return 1
+    return 0 if run_smoke_test(client, args.symbol, cfg) else 1
+
+
 def cmd_reset_halt(args, cfg):
     RiskManager(cfg).reset_halt()
     print("Halt cleared.")
@@ -106,6 +117,10 @@ def main(argv=None) -> int:
     p.add_argument("--mode", choices=["dry-run", "testnet", "live"], default="dry-run")
     p.add_argument("--once", action="store_true", help="run a single cycle and exit")
     p.set_defaults(func=cmd_run)
+
+    p = sub.add_parser("smoke-test", help="testnet only: open a minimal position, verify stop/target, close it")
+    p.add_argument("--symbol", default="BTCUSDT")
+    p.set_defaults(func=cmd_smoke_test)
 
     p = sub.add_parser("reset-halt", help="clear a persisted risk halt")
     p.set_defaults(func=cmd_reset_halt)
